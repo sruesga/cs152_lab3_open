@@ -1,8 +1,12 @@
+#include <list>
+#include <map>
+#include <iostream>
+#include <string>
+
 // my_predictor.h
-// This file contains a sample my_predictor class.
-// It is a simple 32,768-entry gshare with a history length of 15.
-// Note that this predictor doesn't use the whole 32 kilobytes available
-// for the CBP-2 contest; it is just an example.
+// Attempt at building a perceptron-based branch predictor.
+// Based on the following documentation:
+// https://www.cs.utexas.edu/~lin/papers/hpca01.pdf
 
 class my_update : public branch_update {
 public:
@@ -11,24 +15,41 @@ public:
 
 class my_predictor : public branch_predictor {
 public:
-#define HISTORY_LENGTH	15
-#define TABLE_BITS	15
+	std::map<unsigned int, std::list<int> > perceptrons;
+	std::list<int> history;
 	my_update u;
 	branch_info bi;
-	unsigned int history;
-	unsigned char tab[1<<TABLE_BITS];
+    std::list<int>::iterator h_iter;
 
-	my_predictor (void) : history(0) { 
-		memset (tab, 0, sizeof (tab));
+	//stack variables for use only in the prediction method
+	std::map<unsigned int, std::list<int> >::iterator fetch;
+    std::list<int>::iterator p_iter;
+	std::list<int> p;
+	int dot_product;
+
+	//stack variables for use only in the update method
+	int t;
+
+	my_predictor (void) {
+		history.push_back(1); //x_0 set to 1 for bias
 	}
 
 	branch_update *predict (branch_info & b) {
 		bi = b;
 		if (b.br_flags & BR_CONDITIONAL) {
-			u.index = 
-				  (history << (TABLE_BITS - HISTORY_LENGTH)) 
-				^ (b.address & ((1<<TABLE_BITS)-1));
-			u.direction_prediction (tab[u.index] >> 1);
+			u.index = b.address;
+			fetch = perceptrons.find(b.address);
+			if (fetch != perceptrons.end()) {
+				p = fetch->second;
+				dot_product = 0;
+                for (p_iter = p.begin(), h_iter = history.begin(); p_iter != p.end() && h_iter != history.end(); ++p_iter, ++h_iter) {
+                    dot_product += (*p_iter * *h_iter);
+                }
+				u.direction_prediction (dot_product >= 0);
+			} else {
+				u.direction_prediction (true);
+			}
+
 		} else {
 			u.direction_prediction (true);
 		}
@@ -38,15 +59,27 @@ public:
 
 	void update (branch_update *u, bool taken, unsigned int target) {
 		if (bi.br_flags & BR_CONDITIONAL) {
-			unsigned char *c = &tab[((my_update*)u)->index];
-			if (taken) {
-				if (*c < 3) (*c)++;
-			} else {
-				if (*c > 0) (*c)--;
+			t = taken? 1 : -1;
+			history.push_back (t);
+			if (((my_update*)u)->direction_prediction() != taken || dot_product <= 0) {
+				fetch = perceptrons.find(((my_update*)u)->index);
+				if (fetch != perceptrons.end()) { // perceptron found, learn weights
+					std::list<int> weights;
+                    for (p_iter = fetch->second.begin(), h_iter = history.begin(); p_iter != fetch->second.end() && h_iter != history.end(); ++p_iter, ++h_iter) {
+                        weights.push_back(*p_iter + (t * *h_iter));
+                    }
+                    for (;h_iter != history.end(); ++h_iter) {
+                        weights.push_back(t * *h_iter);
+                    }
+					perceptrons[((my_update*)u)->index] = weights;
+				} else { // perceptron yet to exist, add a new vector
+					std::list<int> weights;
+                    for (h_iter = history.begin(); h_iter != history.end(); ++h_iter) {
+                        weights.push_back(t * *h_iter);
+                    }
+					perceptrons[((my_update*)u)->index] = weights;
+				}
 			}
-			history <<= 1;
-			history |= taken;
-			history &= (1<<HISTORY_LENGTH)-1;
 		}
 	}
 };

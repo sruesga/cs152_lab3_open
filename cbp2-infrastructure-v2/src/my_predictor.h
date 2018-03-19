@@ -13,7 +13,7 @@ using namespace std;
 
 #define HISTORY_LEN 62
 #define WEIGHTS_LEN HISTORY_LEN+1
-#define THETA 1.93*HISTORY_LEN + 14
+#define THETA floor(1.93*HISTORY_LEN + 14)
 
 class my_update : public branch_update {
 public:
@@ -31,10 +31,6 @@ public:
 	map<unsigned int, vector<int> >::iterator fetch;
 	vector<int> p;
 
-	my_predictor(void) : history(0) {
-
-	}
-
 	branch_update *predict (branch_info & b) {
 		bi = b;
 		if (b.br_flags & BR_CONDITIONAL) {
@@ -43,20 +39,19 @@ public:
 			if (fetch != perceptrons.end()) {
 				p = fetch->second;
 				u.dot_product = p[0];
-				unsigned int mask = 1 << (HISTORY_LEN - 1);
+				unsigned int mask = 2;
 				for (int i = 1; i < WEIGHTS_LEN; i++) {
 					u.dot_product += (history & mask) ? p[i] : -p[i];
-					mask >>= 1;
+					mask <<= 1;
 				}
 				u.direction_prediction (u.dot_product >= 0);
 			} else {
-				u.dot_product = 1;
 				u.direction_prediction (true);
 			}
 		} else {
 			u.direction_prediction (true);
 		}
-		u.target_prediction (1);
+		u.target_prediction (0);
 		return &u;
 	}
 
@@ -65,19 +60,26 @@ public:
 		my_update v = *w;
 		if (bi.br_flags & BR_CONDITIONAL) {
 			fetch = perceptrons.find(v.addr);
+			int t = taken ? 1 : -1;
 			if (fetch != perceptrons.end()) {
 				p = fetch->second;
-				int t = taken ? 1 : -1;
 				if (v.dot_product*t >= 0 || abs(v.dot_product) <= THETA) {
 					p[0] += t;
-				unsigned int mask = 1 << (HISTORY_LEN - 1);
+					unsigned int mask = 2;
 					for (int i = 1; i < WEIGHTS_LEN; i++) {
-						p[i] += ((history & mask) >> i)==taken ? 1 : -1;
-						mask >>= 1;
+						p[i] += (((history & mask) >> i) == taken) ? 1 : -1;
+						mask <<= 1;
 					}
 				}
 			} else {
-				perceptrons.insert(pair<unsigned int, vector<int> > (v.addr, vector<int> (HISTORY_LEN, taken)));
+				vector<int> weights (HISTORY_LEN, t);
+				weights[0] += t;
+				unsigned int mask = 2;
+				for (int i = 1; i < WEIGHTS_LEN; i++) {
+					weights[i] += (((history & mask) >> i) == taken) ? 1 : -1;
+					mask <<= 1;
+				}
+				perceptrons.insert(pair<unsigned int, vector<int> > (v.addr, weights));
 			}
 			history = (history << 1) | taken;
 		}

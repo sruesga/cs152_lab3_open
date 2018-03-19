@@ -5,6 +5,7 @@
 #include <cmath>
 #include <utility>
 #include <array>
+#include <vector>
 
 // my_predictor.h
 // Attempt at building a perceptron-based branch predictor.
@@ -18,13 +19,13 @@ public:
 
 class my_predictor : public branch_predictor {
 public:
-	#define HISTORY_GROUPS 2
+	#define HISTORY_GROUPS 10
 	#define HISTORY_SIZE 64
 	int HISTORY_TOTAL;
 	unsigned long long int TOP;
 	unsigned long long int BOTTOM;
 
-	std::map<unsigned int, std::array<int, HISTORY_SIZE> > perceptrons;
+	std::map<unsigned int, std::vector<int> > perceptrons;
 	std::map<unsigned int, int> dot_history;
 	unsigned long long int history[HISTORY_GROUPS]; // smaller indexed int represents older history
 	my_update u;
@@ -32,7 +33,7 @@ public:
 	unsigned int history_counter;
 
 	//stack variables for use only in the prediction method
-	std::map<unsigned int, std::array<int, HISTORY_SIZE> >::iterator fetch;
+	std::map<unsigned int, std::vector<int> >::iterator fetch;
 	int dot_product;
 
 	//stack variables for use only in the update method
@@ -92,11 +93,12 @@ public:
 						fetch->second[i] += (taken? 1 : -1) * ((((history[(int) i / HISTORY_SIZE]) >> (HISTORY_SIZE - 1 - (i % HISTORY_SIZE)) & 1) == 1)? 1 : -1);
                     }
 				} else { // perceptron yet to exist, add a new vector
-					std::array<int, HISTORY_SIZE> weights;
+					std::vector<int> weights;
+					weights.resize(HISTORY_TOTAL);
 					for (int i = 0; i < HISTORY_TOTAL; i += 1) {
 						weights[i] = (taken? 1 : -1) * ((((history[(int) i / HISTORY_SIZE]) >> (HISTORY_SIZE - 1 - (i % HISTORY_SIZE)) & 1) == 1)? 1 : -1);
 					}
-					perceptrons.insert( std::pair<unsigned int, std::array<int, HISTORY_SIZE> >(((my_update*)u)->index, weights) );
+					perceptrons.insert( std::pair<unsigned int, std::vector<int> >(((my_update*)u)->index, weights) );
 				}
 			}
 		}

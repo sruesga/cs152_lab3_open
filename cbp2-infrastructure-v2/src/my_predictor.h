@@ -18,15 +18,18 @@ using namespace std;
 class my_update : public branch_update {
 public:
 	unsigned int addr;
+	int dot_product;
 };
 
 class my_predictor : public branch_predictor {
 public:
 	my_update u;
 	branch_info bi;
-	int dot_product;
 	map<unsigned int, vector<int> > perceptrons;
 	unsigned int history;
+
+	map<unsigned int, vector<int> >::iterator fetch;
+	vector<int> p;
 
 	my_predictor(void) : history(0) {
 
@@ -36,18 +39,18 @@ public:
 		bi = b;
 		if (b.br_flags & BR_CONDITIONAL) {
 			u.addr = b.address;
-			map<unsigned int, vector<int> >::iterator fetch = perceptrons.find(b.address);
+			fetch = perceptrons.find(b.address);
 			if (fetch != perceptrons.end()) {
-				vector<int> p = fetch->second;
-				dot_product = p[0];
-				unsigned int mask = 2;
+				p = fetch->second;
+				u.dot_product = p[0];
+				unsigned int mask = 1 << (HISTORY_LEN - 1);
 				for (int i = 1; i < WEIGHTS_LEN; i++) {
-					dot_product += (history & mask) ? p[i] : -p[i];
-					mask <<= 1;
+					u.dot_product += (history & mask) ? p[i] : -p[i];
+					mask >>= 1;
 				}
-				u.direction_prediction (dot_product >= 0);
+				u.direction_prediction (u.dot_product >= 0);
 			} else {
-				dot_product = 1;
+				u.dot_product = 1;
 				u.direction_prediction (true);
 			}
 		} else {
@@ -58,22 +61,23 @@ public:
 	}
 
 	void update (branch_update *u, bool taken, unsigned int target) {
+		my_update* w = (my_update*) u;
+		my_update v = *w;
 		if (bi.br_flags & BR_CONDITIONAL) {
-			map<unsigned int, vector<int> >::iterator fetch = perceptrons.find(bi.address);
+			fetch = perceptrons.find(v.addr);
 			if (fetch != perceptrons.end()) {
-				vector<int> p = fetch->second;
+				p = fetch->second;
 				int t = taken ? 1 : -1;
-				if (dot_product*t >= 0 || abs(dot_product) <= THETA) {
+				if (v.dot_product*t >= 0 || abs(v.dot_product) <= THETA) {
 					p[0] += t;
-					unsigned int mask = 2;
+				unsigned int mask = 1 << (HISTORY_LEN - 1);
 					for (int i = 1; i < WEIGHTS_LEN; i++) {
 						p[i] += ((history & mask) >> i)==taken ? 1 : -1;
-						mask <<= 1;
+						mask >>= 1;
 					}
 				}
 			} else {
-				vector<int> p (HISTORY_LEN, taken);
-				perceptrons.insert(pair<unsigned int, vector<int> > (bi.address, p));
+				perceptrons.insert(pair<unsigned int, vector<int> > (v.addr, vector<int> (HISTORY_LEN, taken)));
 			}
 			history = (history << 1) | taken;
 		}

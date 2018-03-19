@@ -86,7 +86,7 @@ public:
 			history[0] |= TOP;
 			history[HISTORY_GROUPS - 1] |= t;
 			history_counter += (history_counter < HISTORY_TOTAL)? 1 : 0;
-			if (((my_update*)u)->direction_prediction() != taken || std::abs (dot_history[((my_update*)u)->index]) <= LLONG_MAX) {
+			if (((my_update*)u)->direction_prediction() != taken || std::abs (dot_history[((my_update*)u)->index]) <= int(1.93 * HISTORY_TOTAL + 14)) {
 				fetch = perceptrons.find(((my_update*)u)->index);
 				if (fetch != perceptrons.end()) { // perceptron found, learn weights
                     for (int i = 0; i < HISTORY_TOTAL; i += 1) {
